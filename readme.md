@@ -10,11 +10,6 @@ We fine tune these models on our curated dataset collected from musicmatch api.
 
 Then we compare and contrast above models based on different quantitative metrics.
 
-## Demo
-
-![model_load_complete](https://github.com/akpax/deep_hop/assets/78048703/8ccd6f85-5797-4404-914c-96aae4ec8b54)
-![add_input_to_generate](https://github.com/akpax/deep_hop/assets/78048703/6debebeb-ab38-4f94-b0ba-89153a66af77)
-![prediction_displayed](https://github.com/akpax/deep_hop/assets/78048703/9104f3b7-d19b-49f0-be16-515fb86d773d)
 
 ## Objectives
 * Data Collection and Preprocessing: Sourcing data from Musixmatch API, with preprocessing including grapheme-to-phoneme conversion. It contains around 30 artists with 50 songs each.
