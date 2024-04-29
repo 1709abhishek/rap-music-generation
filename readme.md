@@ -1,7 +1,7 @@
 # Rap Lyric Generator Using Deep Learning and LLM models
 
 ## Introduction
-This project aims to explore rap music and hip hop as genre. We take a dig on phonetics and rhyming scheme for the rap music and generate rap lyrics with the help of three models :-
+This project aims to explore rap music and hip hop as genre. We took a dig on phonetics and rhyming scheme for the rap music and generate rap lyrics with the help of three models :-
 1. distilgpt2-rap : hugging face link(https://huggingface.co/dzionek/distilgpt2-rap)
 2. GPT2-finetuned-lyric-generation : hugging face link(https://huggingface.co/SpartanCinder/GPT2-finetuned-lyric-generation)
 3. Ngrams - created by our own
