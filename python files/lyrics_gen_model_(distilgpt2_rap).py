@@ -535,7 +535,7 @@ result_final = re.sub(r'[ ]+\n[ ]+', r'\n', ''.join(final_verse))
 print(result_final)
 
 def get_rhyme_density(lyrics, lookback=15):
-    bars = Lyrics(lyrics, lookback)
+    bars = SongLyrics(lyrics, lookback)
     return bars.avg_rhyme_length
 results_rd = np.array(get_rhyme_density(result_final))
 
