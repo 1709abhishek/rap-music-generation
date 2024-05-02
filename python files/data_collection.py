@@ -17,7 +17,7 @@ import requests
 MUSIXMATCH_API_KEY = "7de93c211254f03eae1c3f9f808ea21e"
 all_songs = []
 # Function to search for tracks by artist
-def search_tracks(artist_name, page_size=50):
+def search_songs(artist_name, page_size=50):
     url = f"https://api.musixmatch.com/ws/1.1/track.search"
     params = {
         "apikey": MUSIXMATCH_API_KEY,
@@ -25,49 +25,49 @@ def search_tracks(artist_name, page_size=50):
         "page_size": page_size,
         "s_track_rating": "desc"
     }
-    response = requests.get(url, params=params)
-    data = response.json()
-    if "message" in data and "body" in data["message"]:
-        tracks = data["message"]["body"]["track_list"]
-        return [(track["track"]["track_name"], track["track"]["artist_name"], track["track"]["track_id"]) for track in tracks]
+    res = requests.get(url, params=params)
+    final_data = res.json()
+    if "message" in final_data and "body" in final_data["message"]:
+        songs = final_data["message"]["body"]["track_list"]
+        return [(tr["track"]["track_name"], tr["track"]["artist_name"], tr["track"]["track_id"]) for tr in songs]
     else:
         print("Failed to fetch tracks.")
         return []
 
 # Function to get lyrics for a track by track_id
-def get_lyrics(track_id):
+def get_songs(track_id):
     url = f"https://api.musixmatch.com/ws/1.1/track.lyrics.get"
     params = {
         "apikey": MUSIXMATCH_API_KEY,
         "track_id": track_id
     }
-    response = requests.get(url, params=params)
-    data = response.json()
-    if "message" in data and "body" in data["message"]:
-        lyrics = data["message"]["body"]["lyrics"]["lyrics_body"]
-        # Remove metadata from the lyrics
+    res = requests.get(url, params=params)
+    final_data = res.json()
+    if "message" in final_data and "body" in final_data["message"]:
+        lyrics = final_data["message"]["body"]["lyrics"]["lyrics_body"]
+        # Remove metafinal_data from the lyrics
         lyrics = lyrics.split("*******")[0]
         return lyrics.strip()
     else:
         print("Failed to fetch lyrics.")
         return ""
 
-# Function to get lyrics for 10 songs of an artist
-def get_artist_lyrics(artist_name):
-    tracks = search_tracks(artist_name)
+# Function to get lyrics for 50 songs of an artist
+def get_artist_songs(artist_name):
+    tracks = search_songs(artist_name)
     songs = []
     for track_name, artist, track_id in tracks:
-        lyrics = get_lyrics(track_id)
+        lyrics = get_songs(track_id)
         if lyrics:
             songs.append([track_name, artist, lyrics])
     return songs
 
 # Function to write lyrics to CSV file
-def write_to_csv(data, filename):
+def write_to_csv(final_data, filename):
     with open(filename, 'w', newline='', encoding='utf-8') as csvfile:
         writer = csv.writer(csvfile)
         writer.writerow(["Title", "Artist", "Lyrics"])
-        writer.writerows(data)
+        writer.writerows(final_data)
 
 # Main function
 def main():
@@ -92,7 +92,8 @@ def main():
 
     for artist in artists:
         print(f"Fetching lyrics for {artist}...")
-        songs = get_artist_lyrics(artist)
+        songs = get_artist_songs(artist)
+        print(songs)
         all_songs.extend(songs)
 
 
@@ -118,7 +119,7 @@ def extend_songs():
 
   for artist in artists_extended:
       print(f"Fetching lyrics for {artist}...")
-      songs = get_artist_lyrics(artist)
+      songs = get_artist_songs(artist)
       all_songs.extend(songs)
 extend_songs()
 
