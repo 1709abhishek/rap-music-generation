@@ -23,8 +23,6 @@ from torch.cuda.amp import custom_fwd, custom_bwd
 from bitsandbytes.functional import quantize_blockwise, dequantize_blockwise
 from tqdm.auto import tqdm
 
-#config = transformers.GPTJConfig.from_pretrained(f"/content/drive/MyDrive/ML Bootcamp/Capstone/lyric_generation/gpt-j-6b/checkpoint-{checkpoint_num}")
-config = transformers.GPTJConfig.from_pretrained("SpartanCinder/GPT2-finetuned-lyric-generation")
 tokenizer = transformers.AutoTokenizer.from_pretrained("SpartanCinder/GPT2-finetuned-lyric-generation")
 
 import random
@@ -128,7 +126,7 @@ def generate_verse():
 
     print("...getting prediction...")
     tokenizer = transformers.AutoTokenizer.from_pretrained("SpartanCinder/GPT2-finetuned-lyric-generation")
-    model = gpt
+    model = model
     with torch.no_grad():
         result_length = 75
         prompt = "~ " + prompt + " =1G->2G= "
@@ -207,19 +205,12 @@ print(tokenizer.decode(output[0], skip_special_tokens=True))
 !pip install eng_to_ipa
 import eng_to_ipa as ipa
 
-def is_vow(character):
-    '''
-    Is the given (lowercase) character a vowel or not.
-    '''
-    #ipa_vowels = "iɪeɛæuʊoɔɑəʌ"
-    ipa_vowels = "yøœɶɒɔoʊuʉiɪeɛæaɐɑʌɤɯɨɜ"
+def is_vowel(character):
+
+    ipa_vowels = "aeiou"
     return character in ipa_vowels
 
-def is_space(character):
-    '''
-    Is the given character a space or newline (other space characters are
-    cleaned in the preprocessing phase).
-    '''
+def is_whitespace(character):
     return character==' ' or character=='\n'
 
 def get_phonetic_transcription(lyrics):
@@ -231,8 +222,6 @@ def get_phonetic_transcription(lyrics):
 
 import re
 import numpy as np
-
-
 
 def syllable_similarity(bar1, bar2):
     similarity = abs(syllables.estimate(bar1) - syllables.estimate(bar2))
@@ -248,11 +237,11 @@ def get_syllable_count_difference(lyrics):
     return similarity/len(lines)
 
 def get_rhyme_density(lyrics, lookback=15):
-    bars = Lyrics(lyrics, lookback)
+    bars = SongLyrics(lyrics, lookback)
     return bars.avg_rhyme_length
 
 def get_longest_rhyme(lyrics, lookback=15):
-    bars = Lyrics(lyrics, lookback)
+    bars = SongLyrics(lyrics, lookback)
     return bars.get_longest_rhyme()[0]
 
 def get_unique_words(lyrics):
@@ -261,7 +250,7 @@ def get_unique_words(lyrics):
     return len(unique_words)/len(words)
 
 def print_lyrics_stats(lyrics, lookback=15, artist=None, title=None):
-    bars = Lyrics(lyrics, lookback, artist, title)
+    bars = SongLyrics(lyrics, lookback, artist, title)
     print(bars.title)
     print('------------------------------------------')
     print("Average rhyme length: %.3f\n" % bars.avg_rhyme_length)
@@ -271,8 +260,7 @@ def print_lyrics_stats(lyrics, lookback=15, artist=None, title=None):
 
 
 
-
-class Lyrics:
+class SongLyrics:
     '''
     This class is used to store and preprocess rap lyrics and calculate
     statistics like average rhyme length out of the lyrics.
@@ -283,19 +271,19 @@ class Lyrics:
         Lyrics can be read from the file (default) or passed directly
         to this constructor.
         '''
-        self.text_raw = None
+        self.raw_text = None
         # How many previous words are checked for a rhyme.
         self.lookback = lookback
-        self.text_raw = text
+        self.raw_text = text
         if artist == None or title == None:
             self.title = "Generated Song"
         else:
             self.title = title + " by " + artist
 
-        if self.text_raw is not None:
-            cleaning_ok = self.clean_text(self.text_raw)
+        if self.raw_text is not None:
+            cleaning_ok = self.clean_text(self.raw_text)
             self.compute_vowel_representation()
-            self.avg_rhyme_length, self.longest_rhyme = self.rhyme_stats()
+            self.avg_rhyme_length, self.longest_rhyme = self.calculate_rhyme_stats()
 
     def clean_text(self, text):
         '''
@@ -309,17 +297,17 @@ class Lyrics:
         # Remove duplicate rows
         self.lines = self.text.split('\n')
 
-        uniq_lines = set()
+        unique_lines = set()
         new_text = ''
-        for l in self.lines:
-            l = l.strip()
-            if len(l) > 0 and l in uniq_lines:
+        for line in self.lines:
+            line = line.strip()
+            if len(line) > 0 and line in unique_lines:
                 continue
             # Remove lines that are within brackets/parenthesis
-            if len(l) >= 2 and ((l[0]=='[' and l[-1]==']') or (l[0]=='(' and l[-1]==')')):
+            if len(line) >= 2 and ((line[0]=='[' and line[-1]==']') or (line[0]=='(' and line[-1]==')')):
                 continue
-            uniq_lines.add(l)
-            new_text += l + '\n'
+            unique_lines.add(line)
+            new_text += line + '\n'
 
         self.text = new_text
 
@@ -327,125 +315,111 @@ class Lyrics:
         '''
         Compute a representation of the lyrics where only vowels are preserved.
         '''
-        self.vow = [] # Lyrics with all but vowels removed
-        self.vow_idxs = [] # Indices of the vowels in self.text list
-        self.word_ends = [] # Indices of the last characters of each word
+        self.vowels_only = [] # Lyrics with all but vowels removed
+        self.vowel_indices = [] # Indices of the vowels in self.text list
+        self.word_end_indices = [] # Indices of the last characters of each word
         self.words = [] # List of words in the lyrics
-        self.line_idxs = []
+        self.line_indices = []
 
-        self.text_orig = self.text
+        self.original_text = self.text
         self.text = get_phonetic_transcription(self.text)
-        self.word_ends_orig = []
-        self.words_orig = []
+        self.original_word_end_indices = []
+        self.original_words = []
 
-        prev_space_idx = -1 # Index of the previous space char
-        line_idx = 0 # Line index of the current character
+        previous_space_index = -1 # Index of the previous space char
+        line_index = 0 # Line index of the current character
         # Go through the lyrics char by char
         for i in range(len(self.text)):
-            self.line_idxs.append(line_idx)
-            c = self.text[i]
-            #c = ph.map_vow(c)
-            if is_vow(c):
+            self.line_indices.append(line_index)
+            character = self.text[i]
+            if is_vowel(character):
                 # Ignore double vowels
-                # (in English this applies probably only to 'aa' as in 'bath'
-                # which rhymes with 'trap' that has only 'a')
-                if i > 0 and self.text[i-1] == c:
+                if i > 0 and self.text[i-1] == character:
                     # Index of a double vowel points to the latter occurrence
-                    self.vow_idxs[-1] = i
+                    self.vowel_indices[-1] = i
                     continue
-                # TODO Diftongs should not be split (i.e. "price" should
-                # not rhyme with "trap kit"). This has been fixed in BattleBot
-                self.vow.append(c)
-                self.vow_idxs.append(i)
-            elif is_space(c):
-                if c in '\n':
-                    line_idx += 1
-                elif c in '.!?' and i < len(self.text)-1 and self.text[i+1] != '\n':
-                    line_idx += 1
-                # If previous char was not a space, we've encountered word end
-                if len(self.vow) > 0 and not is_space(self.text[i-1]):
-                    # Put together the new word. Potential consonants in the
-                    # end are ignored
-                    new_word = self.text[prev_space_idx+1:self.vow_idxs[-1]+1]
-                    # Check that the new word contains at least one vowel
+                self.vowels_only.append(character)
+                self.vowel_indices.append(i)
+            elif is_whitespace(character):
+                if character in '\n':
+                    line_index += 1
+                elif character in '.!?' and i < len(self.text)-1 and self.text[i+1] != '\n':
+                    line_index += 1
+                if len(self.vowels_only) > 0 and not is_whitespace(self.text[i-1]):
+                    new_word = self.text[previous_space_index+1:self.vowel_indices[-1]+1]
                     no_vowels = True
-                    for c2 in new_word:
-                        if is_vow(c2):
+                    for char in new_word:
+                        if is_vowel(char):
                             no_vowels = False
                             break
                     if no_vowels:
-                        prev_space_idx = i
+                        previous_space_index = i
                         continue
-                    self.word_ends.append(len(self.vow)-1)
+                    self.word_end_indices.append(len(self.vowels_only)-1)
                     self.words.append(new_word)
-                prev_space_idx = i
+                previous_space_index = i
 
-        self.lines_orig = self.text_orig.split('\n')
+        self.original_lines = self.original_text.split('\n')
 
-    def rhyme_length(self, wpos2):
+    def rhyme_length(self, word_position_2):
         '''
         Length of rhyme (in vowels). The latter part of the rhyme ends with
-        word self.words[wpos2].
+        word self.words[word_position_2].
 
         Input:
-            wpos2       Word index of the end of the rhyme.
+            word_position_2       Word index of the end of the rhyme.
         '''
         max_length = 0
-        max_wpos1 = None
-        wpos1 = max(0,wpos2-self.lookback)
-        while wpos1 < wpos2:
-            rl = self.rhyme_length_fixed(wpos1, wpos2)
-            if rl > max_length:
-                max_length = rl
-                max_wpos1 = wpos1
-            wpos1 += 1
-        return max_length, max_wpos1
+        max_word_position_1 = None
+        word_position_1 = max(0, word_position_2 - self.lookback)
+        while word_position_1 < word_position_2:
+            rhyme_length = self.fixed_rhyme_length(word_position_1, word_position_2)
+            if rhyme_length > max_length:
+                max_length = rhyme_length
+                max_word_position_1 = word_position_1
+            word_position_1 += 1
+        return max_length, max_word_position_1
 
-    def rhyme_length_fixed(self, wpos1, wpos2):
+    def fixed_rhyme_length(self, word_position_1, word_position_2):
         '''
         Length of rhyme (in vowels). The first part of the rhyme ends with
-        self.words[wpos1] and the latter part with word self.words[wpos2].
+        self.words[word_position_1] and the latter part with word self.words[word_position_2].
 
         Input:
-            wpos1       Word index of the last word in the first part of the rhyme.
-            wpos2       Word index of the end of the rhyme.
+            word_position_1       Word index of the last word in the first part of the rhyme.
+            word_position_2       Word index of the end of the rhyme.
         '''
-        if wpos1 < 0: # Don't wrap
+        if word_position_1 < 0:
             return 0
-        elif self.words[wpos1] == self.words[wpos2]:
+        elif self.words[word_position_1] == self.words[word_position_2]:
             return 0
-        # Indices in the vowel list
-        p1 = self.word_ends[wpos1]
-        p2 = self.word_ends[wpos2]
-        l = 0
-        while self.vow[p1-l] == self.vow[p2-l]:
-            # Make sure that exactly same words are not used
-            if wpos1 > 0 and p1-l <= self.word_ends[wpos1-1] and wpos2 > 0 and p2-l <= self.word_ends[wpos2-1]:
-                # Get the first and last character indices of the words surrounding the vowels at p1-l and p2-l
-                prev_s1 = self.vow_idxs[p1-l]
-                while prev_s1 > 0 and not is_space(self.text[prev_s1-1]):
-                    prev_s1 -= 1
-                prev_s2 = self.vow_idxs[p2-l]
-                while prev_s2 > 0 and not is_space(self.text[prev_s2-1]):
-                    prev_s2 -= 1
-                next_s1 = self.vow_idxs[p1-l]
-                while next_s1 < len(self.text)-1 and not is_space(self.text[next_s1+1]):
-                    next_s1 += 1
-                next_s2 = self.vow_idxs[p2-l]
-                while next_s2 < len(self.text)-1 and not is_space(self.text[next_s2+1]):
-                    next_s2 += 1
-                if next_s1-prev_s1 == next_s2-prev_s2 and self.text[prev_s1:next_s1+1] ==  self.text[prev_s2:next_s2+1]:
+        vowel_index_1 = self.word_end_indices[word_position_1]
+        vowel_index_2 = self.word_end_indices[word_position_2]
+        length = 0
+        while self.vowels_only[vowel_index_1 - length] == self.vowels_only[vowel_index_2 - length]:
+            if word_position_1 > 0 and vowel_index_1 - length <= self.word_end_indices[word_position_1 - 1] and word_position_2 > 0 and vowel_index_2 - length <= self.word_end_indices[word_position_2 - 1]:
+                prev_start_index_1 = self.vowel_indices[vowel_index_1 - length]
+                while prev_start_index_1 > 0 and not is_whitespace(self.text[prev_start_index_1 - 1]):
+                    prev_start_index_1 -= 1
+                prev_start_index_2 = self.vowel_indices[vowel_index_2 - length]
+                while prev_start_index_2 > 0 and not is_whitespace(self.text[prev_start_index_2 - 1]):
+                    prev_start_index_2 -= 1
+                next_start_index_1 = self.vowel_indices[vowel_index_1 - length]
+                while next_start_index_1 < len(self.text) - 1 and not is_whitespace(self.text[next_start_index_1 + 1]):
+                    next_start_index_1 += 1
+                next_start_index_2 = self.vowel_indices[vowel_index_2 - length]
+                while next_start_index_2 < len(self.text) - 1 and not is_whitespace(self.text[next_start_index_2 + 1]):
+                    next_start_index_2 += 1
+                if next_start_index_1 - prev_start_index_1 == next_start_index_2 - prev_start_index_2 and self.text[prev_start_index_1:next_start_index_1 + 1] == self.text[prev_start_index_2:next_start_index_2 + 1]:
                     break
-
-            l += 1
-            if p1-l < 0 or p2-l <= p1:
+            length += 1
+            if vowel_index_1 - length < 0 or vowel_index_2 - length <= vowel_index_1:
                 break
-        # Ignore rhymes with length 1
-        if l == 1:
-            l = 0
-        return l
+        if length == 1:
+            length = 0
+        return length
 
-    def rhyme_stats(self):
+    def calculate_rhyme_stats(self):
         '''
         Compute the average rhyme length of the song and the longest rhyme.
 
@@ -455,22 +429,19 @@ class Lyrics:
                 (length, word index of the first part of the rhyme,
                          word index of the latter part of the rhyme)
         '''
-        # Rhyme length of each word
-        rls = []
-        # Keep track of the longest rhyme
-        max_rhyme = (0,None,None)
-        for wpos2 in range(1,len(self.word_ends)):
-            (rl, wpos1) = self.rhyme_length(wpos2)
-            rls.append(rl)
-            if rl > max_rhyme[0]:
-                max_rhyme = (rl, wpos1, wpos2)
-        rls = np.array(rls)
-        # Average rhyme length of the song
-        if len(rls) > 0:
-            avg_rl = np.mean(rls)
+        rhyme_lengths = []
+        max_rhyme = (0, None, None)
+        for word_position_2 in range(1, len(self.word_end_indices)):
+            rhyme_length, word_position_1 = self.rhyme_length(word_position_2)
+            rhyme_lengths.append(rhyme_length)
+            if rhyme_length > max_rhyme[0]:
+                max_rhyme = (rhyme_length, word_position_1, word_position_2)
+        rhyme_lengths = np.array(rhyme_lengths)
+        if len(rhyme_lengths) > 0:
+            avg_rhyme_length = np.mean(rhyme_lengths)
         else:
-            avg_rl = 0
-        return avg_rl, max_rhyme
+            avg_rhyme_length = 0
+        return avg_rhyme_length, max_rhyme
 
     def get_avg_rhyme_length(self):
         return self.avg_rhyme_length
@@ -481,45 +452,38 @@ class Lyrics:
 
         self.print_rhyme(self.longest_rhyme)
 
-
     def print_rhyme(self, rhyme_tuple):
         print(self.get_rhyme_str(rhyme_tuple))
 
     def get_rhyme_str(self, rhyme_tuple):
-        '''
-        Construct a string of a given rhyme tuple.
-        '''
         ret = ''
-        rl, wpos1, wpos2 = rhyme_tuple
-        if wpos1 is None or wpos2 is None:
+        rhyme_length, word_position_1, word_position_2 = rhyme_tuple
+        if word_position_1 is None or word_position_2 is None:
             return ''
-        p2 = self.vow_idxs[self.word_ends[wpos2]]
-        p2_orig = p2
-        # Find the ending of the last word
-        while not is_space(self.text[p2]):
-            p2 += 1
-        p0 = self.vow_idxs[self.word_ends[wpos1]-rl]
-        p0_orig = p0
-        # Find the beginning of the line
-        while self.text[p0] != '\n' and p0 > 0:
-            p0 -= 1
+        vowel_index_2 = self.vowel_indices[self.word_end_indices[word_position_2]]
+        vowel_index_2_original = vowel_index_2
+        while not is_whitespace(self.text[vowel_index_2]):
+            vowel_index_2 += 1
+        vowel_index_1 = self.vowel_indices[self.word_end_indices[word_position_1] - rhyme_length]
+        vowel_index_1_original = vowel_index_1
+        while self.text[vowel_index_1] != '\n' and vowel_index_1 > 0:
+            vowel_index_1 -= 1
 
-        cap_line = ''
-        rw1, rw2 = self.get_rhyming_vowels(rhyme_tuple)
-        for i in range(p0,p2+1):
-            if i == min(rw1) or i == min(rw2):
-                cap_line += ' | ' + self.text[i]
-            elif i == max(rw1) or i == max(rw2):
-                cap_line += self.text[i] + '|'
+        capitalized_line = ''
+        rhyming_vowels_1, rhyming_vowels_2 = self.get_rhyming_vowels(rhyme_tuple)
+        for i in range(vowel_index_1, vowel_index_2 + 1):
+            if i == min(rhyming_vowels_1) or i == min(rhyming_vowels_2):
+                capitalized_line += ' | ' + self.text[i]
+            elif i == max(rhyming_vowels_1) or i == max(rhyming_vowels_2):
+                capitalized_line += self.text[i] + '|'
             else:
-                cap_line += self.text[i]
-        ret += "Longest rhyme (l=%d): %s\n" % (rl, cap_line)
-        # Get the corresponding lines from the original lyrics
-        line_beg = self.line_idxs[p0]
-        line_end = self.line_idxs[p2]
-        for i in range(line_beg, line_end+1):
-            if i < len(self.lines_orig):
-                ret += self.lines_orig[i] + '\n'
+                capitalized_line += self.text[i]
+        ret += "Longest rhyme (l=%d): %s\n" % (rhyme_length, capitalized_line)
+        line_begin = self.line_indices[vowel_index_1]
+        line_end = self.line_indices[vowel_index_2]
+        for i in range(line_begin, line_end + 1):
+            if i < len(self.original_lines):
+                ret += self.original_lines[i] + '\n'
         return ret
 
     def get_longest_rhyme(self):
@@ -527,44 +491,32 @@ class Lyrics:
         return self.longest_rhyme[0], rhyme_str
 
     def get_rhyming_vowels(self, rhyme_tuple):
-        '''
-        Return the indices of the rhyming vowels of the longest rhyme.
+        rhyme_length, word_position_1, word_position_2 = rhyme_tuple
+        if word_position_1 is None or word_position_2 is None:
+            return ([-1], [-1])
 
-        Output:
-            Tuple with the indices of the first part and the second part of
-            the rhyme separately.
-        '''
-        rl, wpos1, wpos2 = rhyme_tuple
-        if wpos1 is None or wpos2 is None:
-            return ([-1],[-1])
+        rhyming_vowels_1 = []
+        count_caps = 0
+        index = self.vowel_indices[self.word_end_indices[word_position_1]]
+        while count_caps < rhyme_length:
+            if is_vowel(self.text[index]):
+                rhyming_vowels_1.append(index)
+                if self.text[index] != self.text[index + 1]:
+                    count_caps += 1
+            index -= 1
 
-        # The first part of the rhyme
-        rhyme_idxs1 = [] # Indices of the rhyming vowels
-        n_caps = 0
-        p = self.vow_idxs[self.word_ends[wpos1]]
-        while n_caps < rl:
-            if is_vow(self.text[p]):
-                rhyme_idxs1.append(p)
-                # Increase the counter only if the vowel is not a double vowel
-                if self.text[p] != self.text[p+1]:
-                    n_caps += 1
-            p -= 1
+        rhyming_vowels_2 = []
+        count_caps = 0
+        index = self.vowel_indices[self.word_end_indices[word_position_2]]
+        last_index = index
+        while count_caps < rhyme_length:
+            if is_vowel(self.text[index]):
+                rhyming_vowels_2.append(index)
+                if index == last_index or self.text[index] != self.text[index + 1]:
+                    count_caps += 1
+            index -= 1
 
-        # The second part of the rhyme
-        rhyme_idxs2 = [] # Indices of the rhyming vowels
-        n_caps = 0
-        p = self.vow_idxs[self.word_ends[wpos2]]
-        p_last = p
-        while n_caps < rl:
-            if is_vow(self.text[p]):
-                rhyme_idxs2.append(p)
-                # Increase the counter only if the vowel is not a double vowel.
-                # The last vowel must be always counted.
-                if p == p_last or self.text[p] != self.text[p+1]:
-                    n_caps += 1
-            p -= 1
-
-        return (rhyme_idxs1, rhyme_idxs2)
+        return (rhyming_vowels_1, rhyming_vowels_2)
 
 import numpy as np
 import re
@@ -582,7 +534,7 @@ result_final = re.sub(r'[ ]+\n[ ]+', r'\n', ''.join(final_verse))
 print(result_final)
 
 def get_rhyme_density(lyrics, lookback=15):
-    bars = Lyrics(lyrics, lookback)
+    bars = SongLyrics(lyrics, lookback)
     return bars.avg_rhyme_length
 results_rd = np.array(get_rhyme_density(result_final))
 
